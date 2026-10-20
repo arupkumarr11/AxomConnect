@@ -1,0 +1,7 @@
+{
+  "name": "AxomConnect",
+  "description": "Mobile social media platform connecting Assamese and Indian community with posts, media, likes, and profiles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

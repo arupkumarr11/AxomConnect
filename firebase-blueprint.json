@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information on AxomConnect",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID of the user" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "username": { "type": "string", "description": "Unique username handle" },
+        "bio": { "type": "string", "description": "User bio or description" },
+        "avatarUrl": { "type": "string", "description": "Avatar image URL" },
+        "location": { "type": "string", "description": "City or region (e.g. Assam, Guwahati)" },
+        "interests": { "type": "string", "description": "Cultural interests and topics" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp via serverTimestamp" }
+      },
+      "required": ["userId", "displayName", "username", "createdAt", "updatedAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Public social post on AxomConnect feed",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "description": "Unique post identifier" },
+        "authorId": { "type": "string", "description": "UID of author" },
+        "authorName": { "type": "string", "description": "Display name of author" },
+        "authorAvatarUrl": { "type": "string", "description": "Avatar URL of author" },
+        "content": { "type": "string", "description": "Post text content" },
+        "mediaUrl": { "type": "string", "description": "Optional image or media URL" },
+        "mediaType": { "type": "string", "enum": ["image", "video", "none"] },
+        "tag": { "type": "string", "description": "Category tag e.g. Culture, Bihu, Food" },
+        "likesCount": { "type": "integer", "description": "Count of likes" },
+        "commentsCount": { "type": "integer", "description": "Count of comments" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "content", "likesCount", "commentsCount", "createdAt", "updatedAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comment on a post",
+      "type": "object",
+      "properties": {
+        "commentId": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatarUrl": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "authorName", "text", "createdAt"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "User like on a post",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "postId", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Moderation report for harmful post or user",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["post", "user"] },
+        "targetId": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterId", "targetType", "targetId", "reason", "status", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin authorization entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles indexed by UID"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Social feed posts"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments belonging to a post"
+    },
+    "/posts/{postId}/likes/{likeId}": {
+      "schema": { "$ref": "#/entities/Like" },
+      "description": "User likes on a post"
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Content moderation reports"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Trusted admin registry"
+    }
+  }
+}

@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email' in request.auth.token && request.auth.token.email == 'arupkumarr11@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 35 &&
+             (!('bio' in data) || data.bio == null || (data.bio is string && data.bio.size() <= 300)) &&
+             (!('avatarUrl' in data) || data.avatarUrl == null || (data.avatarUrl is string && data.avatarUrl.size() <= 1000)) &&
+             (!('location' in data) || data.location == null || (data.location is string && data.location.size() <= 100)) &&
+             (!('interests' in data) || data.interests == null || (data.interests is string && data.interests.size() <= 200)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidPost(data) {
+      return data.authorId is string && data.authorId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60 &&
+             (!('authorAvatarUrl' in data) || data.authorAvatarUrl == null || (data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1000)) &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
+             (!('mediaUrl' in data) || data.mediaUrl == null || (data.mediaUrl is string && data.mediaUrl.size() <= 1000)) &&
+             (!('mediaType' in data) || data.mediaType == null || (data.mediaType is string && data.mediaType in ['image', 'video', 'none'])) &&
+             (!('tag' in data) || data.tag == null || (data.tag is string && data.tag.size() <= 60)) &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0 &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidComment(data) {
+      return data.postId is string && data.postId.size() <= 128 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60 &&
+             (!('authorAvatarUrl' in data) || data.authorAvatarUrl == null || (data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1000)) &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 500 &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
+    function isValidLike(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.postId is string && data.postId.size() <= 128 &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
+    function isValidReport(data) {
+      return data.reporterId is string && data.reporterId.size() <= 128 &&
+             data.targetType is string && (data.targetType in ['post', 'user']) &&
+             data.targetId is string && data.targetId.size() <= 128 &&
+             data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 300 &&
+             data.status is string && (data.status in ['pending', 'reviewed', 'dismissed']) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'username', 'createdAt', 'updatedAt']);
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'username', 'bio', 'avatarUrl', 'location', 'interests', 'updatedAt']);
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // 2. Posts collection
+    match /posts/{postId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().likesCount == 0 &&
+                       incoming().commentsCount == 0 &&
+                       isValidPost(incoming()) &&
+                       incoming().keys().hasAll(['authorId', 'authorName', 'content', 'likesCount', 'commentsCount', 'createdAt', 'updatedAt']);
+      allow update: if isSignedIn() && isValidPost(incoming()) && (
+        // Author updates post content or media
+        (existing().authorId == request.auth.uid &&
+         incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['content', 'mediaUrl', 'mediaType', 'tag', 'updatedAt'])) ||
+        // Like/unlike interaction: updates only likesCount and updatedAt
+        (incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt']) &&
+         (incoming().likesCount == existing().likesCount + 1 || incoming().likesCount == existing().likesCount - 1)) ||
+        // Comment count interaction: updates only commentsCount and updatedAt
+        (incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount', 'updatedAt']) &&
+         (incoming().commentsCount == existing().commentsCount + 1 || incoming().commentsCount == existing().commentsCount - 1)) ||
+        // Admin moderation
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (existing().authorId == request.auth.uid || isAdmin());
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() &&
+                         isValidId(commentId) &&
+                         incoming().authorId == request.auth.uid &&
+                         incoming().postId == postId &&
+                         isValidComment(incoming()) &&
+                         incoming().keys().hasAll(['postId', 'authorId', 'authorName', 'text', 'createdAt']);
+        allow update: if false;
+        allow delete: if isSignedIn() && (existing().authorId == request.auth.uid || isAdmin());
+      }
+
+      // Likes subcollection
+      match /likes/{likeId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() &&
+                         likeId == request.auth.uid &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().postId == postId &&
+                         isValidLike(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'postId', 'createdAt']);
+        allow update: if false;
+        allow delete: if isSignedIn() && likeId == request.auth.uid;
+      }
+    }
+
+    // 3. Reports collection
+    match /reports/{reportId} {
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().reporterId == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       isValidReport(incoming()) &&
+                       incoming().keys().hasAll(['reporterId', 'targetType', 'targetId', 'reason', 'status', 'createdAt']);
+      allow get, list: if isAdmin();
+      allow update: if isAdmin() && isValidReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 4. Admins collection
+    match /admins/{adminId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+  }
+}
